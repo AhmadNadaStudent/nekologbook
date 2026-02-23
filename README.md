@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Nekologbook
 
-## Getting Started
+Alat kecil berbasis Next.js untuk mengonversi 1 gambar JPG/PNG menjadi file PDF berukuran maksimal 1 MB. Nama file PDF akan mengikuti tanggal yang kamu pilih.
 
-First, run the development server:
+### Fitur
+- Upload 1 file gambar (JPG/PNG)
+- Pilih tanggal untuk nama file PDF (format dd-mm-yy)
+- Otomatis mengecilkan resolusi gambar jika ukuran PDF terlalu besar
+- Feedback error dan sukses langsung di UI
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Teknologi yang Digunakan
+- Next.js 16 (App Router)
+- React 19
+- Material UI (MUI)
+- Tailwind CSS 4
+- pdf-lib & sharp untuk pembuatan PDF
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Menjalankan Secara Lokal
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Pastikan Node.js sudah terpasang.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Install dependency:
 
-## Learn More
+	```bash
+	npm install
+	```
 
-To learn more about Next.js, take a look at the following resources:
+2. Jalankan server development:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+	```bash
+	npm run dev
+	```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Buka di browser:
 
-## Deploy on Vercel
+	```
+	http://localhost:3000
+	```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Cara Pakai
+- Buka halaman utama aplikasi
+- Pilih tanggal yang akan dipakai sebagai nama file PDF
+- Klik tombol "Pilih Gambar" dan pilih satu file JPG/PNG
+- Klik tombol "Konversi ke PDF"
+- Jika ukuran PDF terlalu besar, aplikasi akan menawarkan untuk menurunkan resolusi
+- Setelah berhasil, unduhan file PDF akan dimulai otomatis
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Catatan
+- Hanya mendukung 1 file gambar per konversi
+- Hanya mendukung format `image/jpeg` dan `image/png`
+- Batas ukuran PDF saat ini adalah 1 MB
+
