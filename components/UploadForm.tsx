@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, ChangeEvent } from "react";
+import { useState, FormEvent, ChangeEvent, DragEvent } from "react";
 import {
   Box,
   Button,
@@ -12,17 +12,24 @@ import {
 } from "@mui/material";
 
 export function UploadForm() {
+  const getTodayAsInputDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayAsInputDate);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (file: File | null) => {
     setError(null);
     setSuccess(null);
-
-    const file = event.target.files?.[0] ?? null;
 
     if (!file) {
       setSelectedFile(null);
@@ -38,10 +45,57 @@ export function UploadForm() {
     setSelectedFile(file);
   };
 
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    handleFileSelected(file);
+  };
+
   const handleDateChange = (event: ChangeEvent<HTMLInputElement>) => {
     setError(null);
     setSuccess(null);
     setSelectedDate(event.target.value);
+  };
+
+  const handleDragEnter = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDragging) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const currentTarget = event.currentTarget;
+    const related = event.relatedTarget as Node | null;
+
+    if (related && currentTarget.contains(related)) {
+      return;
+    }
+
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const file = files[0];
+    handleFileSelected(file);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -155,6 +209,7 @@ export function UploadForm() {
       className="upload-form"
       elevation={6}
       sx={{
+        fontFamily: "var(--font-museo)",
         width: "100%",
         maxWidth: 520,
         borderRadius: 4,
@@ -245,7 +300,17 @@ export function UploadForm() {
                   "linear-gradient(135deg, rgba(239,246,255,0.9), rgba(224,231,255,0.7))",
                 transform: "translateY(-1px)",
               },
+              ...(isDragging && {
+                borderColor: "primary.main",
+                background:
+                  "linear-gradient(135deg, rgba(239,246,255,0.95), rgba(224,231,255,0.9))",
+                transform: "translateY(-1px)",
+              }),
             }}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             <input
               type="file"
@@ -254,7 +319,7 @@ export function UploadForm() {
               onChange={handleFileChange}
             />
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              Klik untuk pilih gambar
+              Klik atau seret dan lepaskan gambar di sini
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
               Format yang didukung: JPG, PNG. 1 file per konversi.
