@@ -12,8 +12,9 @@ export default function Home() {
             Ubah foto Laporan menjadi PDF ukuran kecil.
           </h1>
           <p className="text-sm sm:text-base text-zinc-50 max-w-xl mx-auto">
-            Unggah satu foto laporan, pilih tanggal kunjungan, dan kami
-            akan membuatkan PDF berukuran ringan siap upload siakad.
+            Unggah satu atau beberapa foto laporan, pilih tanggal kunjungan
+            untuk tiap foto, dan kami akan membuatkan PDF berukuran ringan
+            siap upload siakad.
           </p>
         </header>
 

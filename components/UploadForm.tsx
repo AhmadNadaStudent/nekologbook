@@ -9,52 +9,50 @@ import {
   CircularProgress,
   Paper,
   TextField,
+  Dialog,
 } from "@mui/material";
 
-export function UploadForm() {
-  const getTodayAsInputDate = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
+type UploadItemStatus = "idle" | "converting" | "success" | "error";
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(getTodayAsInputDate);
+type UploadItem = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  originalSize: number;
+  estimatedPdfSize: number;
+  date: string;
+  status: UploadItemStatus;
+};
+
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = bytes / Math.pow(k, i);
+  return `${value.toFixed(i === 0 ? 0 : 1)} ${sizes[i]}`;
+};
+
+const estimatePdfSize = (bytes: number): number => {
+  // Perkiraan kasar: PDF hasil kompresi sekitar 60% dari ukuran gambar asli
+  return Math.round(bytes * 0.6);
+};
+
+const getTodayAsInputDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+export function UploadForm() {
+  const [items, setItems] = useState<UploadItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-
-  const handleFileSelected = (file: File | null) => {
-    setError(null);
-    setSuccess(null);
-
-    if (!file) {
-      setSelectedFile(null);
-      return;
-    }
-
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      setError("Hanya mendukung gambar JPG atau PNG.");
-      setSelectedFile(null);
-      return;
-    }
-
-    setSelectedFile(file);
-  };
-
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    handleFileSelected(file);
-  };
-
-  const handleDateChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setError(null);
-    setSuccess(null);
-    setSelectedDate(event.target.value);
-  };
+  const [previewItem, setPreviewItem] = useState<UploadItem | null>(null);
 
   const handleDragEnter = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
@@ -84,18 +82,107 @@ export function UploadForm() {
     setIsDragging(false);
   };
 
+  const addFiles = (fileList: FileList | null) => {
+    setError(null);
+    setSuccess(null);
+
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+
+    const newItems: UploadItem[] = [];
+
+    Array.from(fileList).forEach((file) => {
+      if (!["image/jpeg", "image/png"].includes(file.type)) {
+        setError("Hanya mendukung gambar JPG atau PNG.");
+        return;
+      }
+
+      const id = `${file.name}-${file.size}-${file.lastModified}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      const previewUrl = URL.createObjectURL(file);
+      const originalSize = file.size;
+      const estimatedPdfSize = estimatePdfSize(originalSize);
+
+      newItems.push({
+        id,
+        file,
+        previewUrl,
+        originalSize,
+        estimatedPdfSize,
+        date: getTodayAsInputDate(),
+        status: "idle",
+      });
+    });
+
+    if (newItems.length === 0) {
+      return;
+    }
+
+    setItems((prev) => [...prev, ...newItems]);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    addFiles(event.target.files);
+    // reset supaya memilih file yang sama lagi tetap terdeteksi
+    event.target.value = "";
+  };
+
   const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
 
-    const files = event.dataTransfer?.files;
-    if (!files || files.length === 0) {
-      return;
+    addFiles(event.dataTransfer?.files ?? null);
+  };
+
+  const handleItemDateChange = (id: string, value: string) => {
+    setError(null);
+    setSuccess(null);
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              date: value,
+            }
+          : item
+      )
+    );
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setItems((prev) => {
+      const item = prev.find((x) => x.id === id);
+      if (item) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+      return prev.filter((x) => x.id !== id);
+    });
+  };
+
+  const downloadPdf = async (response: Response) => {
+    const blob = await response.blob();
+
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let filename = "converted.pdf";
+
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+      if (match && match[1]) {
+        filename = match[1];
+      }
     }
 
-    const file = files[0];
-    handleFileSelected(file);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -103,49 +190,33 @@ export function UploadForm() {
     setError(null);
     setSuccess(null);
 
-    if (!selectedFile) {
-      setError("Silakan pilih satu file gambar terlebih dahulu.");
+    if (items.length === 0) {
+      setError("Silakan pilih minimal satu file gambar terlebih dahulu.");
       return;
     }
 
-    if (!selectedDate) {
-      setError("Silakan pilih tanggal terlebih dahulu.");
+    const missingDate = items.some((item) => !item.date);
+    if (missingDate) {
+      setError("Pastikan semua foto sudah memiliki tanggal kunjungan.");
       return;
     }
 
-    if (!["image/jpeg", "image/png"].includes(selectedFile.type)) {
+    const invalidType = items.some(
+      (item) => !["image/jpeg", "image/png"].includes(item.file.type)
+    );
+    if (invalidType) {
       setError("Hanya mendukung gambar JPG atau PNG.");
       return;
     }
-    const downloadPdf = async (response: Response) => {
-      const blob = await response.blob();
 
-      const contentDisposition = response.headers.get("Content-Disposition");
-      let filename = "converted.pdf";
-
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^";]+)"?/i);
-        if (match && match[1]) {
-          filename = match[1];
-        }
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      setSuccess("PDF berhasil dibuat, unduhan dimulai.");
-    };
-
-    const requestConversion = async (reduceResolution: boolean): Promise<void> => {
+    const requestConversion = async (
+      file: File,
+      date: string,
+      reduceResolution: boolean
+    ): Promise<boolean> => {
       const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("date", selectedDate);
+      formData.append("file", file);
+      formData.append("date", date);
       if (reduceResolution) {
         formData.append("reduceResolution", "true");
       }
@@ -157,7 +228,7 @@ export function UploadForm() {
 
       if (response.ok) {
         await downloadPdf(response);
-        return;
+        return true;
       }
 
       let data: any = null;
@@ -165,7 +236,7 @@ export function UploadForm() {
         data = await response.json();
       } catch {
         setError("Gagal mengonversi gambar.");
-        return;
+        return false;
       }
 
       if (!reduceResolution && data?.errorCode === "PDF_TOO_LARGE_INITIAL") {
@@ -174,12 +245,11 @@ export function UploadForm() {
         const shouldReduce = window.confirm(confirmMessage);
 
         if (shouldReduce) {
-          await requestConversion(true);
-          return;
+          return await requestConversion(file, date, true);
         }
 
         setError(data?.error || "Gagal mengonversi gambar.");
-        return;
+        return false;
       }
 
       if (reduceResolution && data?.errorCode === "PDF_TOO_LARGE_FINAL") {
@@ -187,15 +257,49 @@ export function UploadForm() {
         setError(
           `Tidak dapat membuat PDF di bawah 1 MB meskipun resolusi sudah diturunkan (ukuran saat ini ${sizeMb} MB).`
         );
-        return;
+        return false;
       }
 
       setError(data?.error || "Gagal mengonversi gambar.");
+      return false;
     };
 
     try {
       setIsLoading(true);
-      await requestConversion(false);
+
+      const results = await Promise.all(
+        items.map(async (item) => {
+          setItems((prev) =>
+            prev.map((x) =>
+              x.id === item.id
+                ? {
+                    ...x,
+                    status: "converting",
+                  }
+                : x
+            )
+          );
+
+          const ok = await requestConversion(item.file, item.date, false);
+
+          setItems((prev) =>
+            prev.map((x) =>
+              x.id === item.id
+                ? {
+                    ...x,
+                    status: ok ? "success" : "error",
+                  }
+                : x
+            )
+          );
+
+          return ok;
+        })
+      );
+
+      if (results.every((r) => r)) {
+        setSuccess("Semua PDF berhasil dibuat, unduhan dimulai.");
+      }
     } catch (err) {
       console.error(err);
       setError("Terjadi kesalahan tak terduga. Silakan coba lagi.");
@@ -209,9 +313,8 @@ export function UploadForm() {
       className="upload-form"
       elevation={6}
       sx={{
-        fontFamily: "var(--font-museo)",
         width: "100%",
-        maxWidth: 520,
+        minWidth: 1280,
         borderRadius: 4,
         px: { xs: 3, sm: 4 },
         py: { xs: 3, sm: 4.5 },
@@ -245,9 +348,9 @@ export function UploadForm() {
             Konversi gambar logbook ke PDF
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Unggah 1 gambar JPG/PNG dengan kualitas jelas, lalu pilih tanggal
-            kunjungan. Kami akan membuatkan PDF dengan nama file sesuai tanggal
-            tersebut.
+            Unggah satu atau beberapa gambar JPG/PNG dengan kualitas jelas.
+            Untuk setiap foto, pilih tanggal kunjungan. Kami akan membuatkan
+            PDF dengan nama file sesuai tanggal tersebut.
           </Typography>
         </Box>
 
@@ -262,19 +365,6 @@ export function UploadForm() {
             {success}
           </Alert>
         )}
-
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-          <TextField
-            type="date"
-            fullWidth
-            size="small"
-            label="Tanggal kunjungan"
-            InputLabelProps={{ shrink: true }}
-            value={selectedDate}
-            onChange={handleDateChange}
-            helperText="Digunakan untuk nama file PDF (format tgl-bulan-thn)."
-          />
-        </Box>
 
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           <Box
@@ -293,7 +383,8 @@ export function UploadForm() {
               cursor: "pointer",
               background:
                 "linear-gradient(135deg, rgba(244,244,245,0.8), rgba(228,228,231,0.4))",
-              transition: "border-color 150ms ease, background 150ms ease, transform 120ms ease",
+              transition:
+                "border-color 150ms ease, background 150ms ease, transform 120ms ease",
               "&:hover": {
                 borderColor: "primary.main",
                 background:
@@ -316,46 +407,200 @@ export function UploadForm() {
               type="file"
               hidden
               accept="image/png,image/jpeg"
+              multiple
               onChange={handleFileChange}
             />
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
               Klik atau seret dan lepaskan gambar di sini
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-              Format yang didukung: JPG, PNG. 1 file per konversi.
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 0.5 }}
+            >
+              Format yang didukung: JPG, PNG. Bisa memilih beberapa file
+              sekaligus.
             </Typography>
-            {selectedFile && (
-              <Typography
-                variant="caption"
-                sx={{ mt: 1, px: 1.5, py: 0.5, borderRadius: 999, bgcolor: "rgba(24,24,27,0.04)" }}
-              >
-                File terpilih: {selectedFile.name}
-              </Typography>
-            )}
           </Box>
         </Box>
 
-        <Button
-          type="submit"
-          variant="contained"
-          disabled={isLoading || !selectedFile || !selectedDate}
-          sx={{
-            mt: 0.5,
-            borderRadius: 999,
-            textTransform: "none",
-            py: 1,
-            fontWeight: 600,
-          }}
-        >
-          {isLoading ? (
-            <>
-              <CircularProgress size={18} sx={{ mr: 1 }} /> Mengonversi...
-            </>
-          ) : (
-            "Konversi ke PDF"
-          )}
-        </Button>
+        {items.length > 0 && (
+          <Box
+            sx={{
+              mt: 2,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1.5,
+            }}
+          >
+            <Typography variant="subtitle2" color="text.secondary">
+              Daftar foto yang akan dikonversi
+            </Typography>
+
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  sm: "repeat(2, minmax(0, 1fr))",
+                  md: "repeat(3, minmax(0, 1fr))",
+                },
+                gap: 1.5,
+              }}
+            >
+              {items.map((item) => (
+                <Paper
+                  key={item.id}
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.5,
+                    width: "100%",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: "relative",
+                      borderRadius: 1.5,
+                      overflow: "hidden",
+                      bgcolor: "background.default",
+                      cursor: "zoom-in",
+                    }}
+                    onClick={() => setPreviewItem(item)}
+                  >
+                    <Box
+                      component="img"
+                      src={item.previewUrl}
+                      alt={item.file.name}
+                      sx={{
+                        width: "100%",
+                        height: { xs: 200, sm: 220 },
+                        objectFit: "contain",
+                        display: "block",
+                      }}
+                    />
+                  </Box>
+
+                  <Box sx={{ mt: 0.5 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 600, wordBreak: "break-word" }}
+                    >
+                      {item.file.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Asli: {formatBytes(item.originalSize)} · Perkiraan PDF:{" "}
+                      {formatBytes(item.estimatedPdfSize)}
+                    </Typography>
+                    {item.status !== "idle" && (
+                      <Typography
+                        variant="caption"
+                        color={
+                          item.status === "success"
+                            ? "success.main"
+                            : item.status === "error"
+                            ? "error.main"
+                            : "text.secondary"
+                        }
+                        sx={{ display: "block", mt: 0.5 }}
+                      >
+                        {item.status === "converting" && "Mengonversi..."}
+                        {item.status === "success" && "Berhasil dikonversi."}
+                        {item.status === "error" && "Gagal dikonversi."}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1.5,
+                      mt: 1,
+                    }}
+                  >
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      label="Tanggal kunjungan"
+                      InputLabelProps={{ shrink: true }}
+                      value={item.date}
+                      onChange={(e) =>
+                        handleItemDateChange(item.id, e.target.value)
+                      }
+                    />
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={isLoading}
+                    >
+                      Hapus
+                    </Button>
+                  </Box>
+                </Paper>
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 0.5 }}>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={isLoading || items.length === 0}
+            sx={{
+              borderRadius: 999,
+              textTransform: "none",
+              py: 1,
+              fontWeight: 600,
+            }}
+          >
+            {isLoading ? (
+              <>
+                <CircularProgress size={18} sx={{ mr: 1 }} /> Mengonversi...
+              </>
+            ) : (
+              "Konversi ke PDF"
+            )}
+          </Button>
+        </Box>
       </Box>
+
+      <Dialog
+        open={!!previewItem}
+        onClose={() => setPreviewItem(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        {previewItem && (
+          <Box
+            sx={{
+              p: 2,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Box
+              component="img"
+              src={previewItem.previewUrl}
+              alt={previewItem.file.name}
+              sx={{
+                maxWidth: "100%",
+                maxHeight: "80vh",
+                borderRadius: 2,
+                objectFit: "contain",
+              }}
+            />
+          </Box>
+        )}
+      </Dialog>
     </Paper>
   );
 }
