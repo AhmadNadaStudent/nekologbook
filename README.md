@@ -4,6 +4,7 @@ Alat kecil berbasis Next.js untuk mengonversi 1 gambar JPG/PNG menjadi file PDF 
 
 ### Fitur
 - Upload 1 file gambar (JPG/PNG)
+- Tanggal default diambil dari metadata foto (EXIF DateTimeOriginal) kalau tersedia, lalu bisa diubah manual
 - Pilih tanggal untuk nama file PDF (format dd-mm-yy)
 - Otomatis mengecilkan resolusi gambar jika ukuran PDF terlalu besar
 - Feedback error dan sukses langsung di UI
@@ -39,8 +40,9 @@ Pastikan Node.js sudah terpasang.
 
 ### Cara Pakai
 - Buka halaman utama aplikasi
-- Pilih tanggal yang akan dipakai sebagai nama file PDF
 - Klik tombol "Pilih Gambar" dan pilih satu file JPG/PNG
+- Tanggal akan terisi otomatis dari metadata foto jika tersedia; kalau tidak ada, pakai tanggal hari ini
+- Ubah tanggal kalau perlu
 - Klik tombol "Konversi ke PDF"
 - Jika ukuran PDF terlalu besar, aplikasi akan menawarkan untuk menurunkan resolusi
 - Setelah berhasil, unduhan file PDF akan dimulai otomatis

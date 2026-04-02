@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent, ChangeEvent, DragEvent } from "react";
+import exifr from "exifr";
 import {
   Box,
   Button,
@@ -46,6 +47,48 @@ const getTodayAsInputDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+const formatDateAsInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const getExifDateAsInputValue = (value: unknown) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatDateAsInputValue(value);
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return formatDateAsInputValue(parsed);
+    }
+  }
+
+  return null;
+};
+
+const getDefaultDateForFile = async (file: File) => {
+  try {
+    const metadata = await exifr.parse(file, ["DateTimeOriginal"]);
+    if (metadata && typeof metadata === "object") {
+      const date = getExifDateAsInputValue(
+        (metadata as { DateTimeOriginal?: unknown }).DateTimeOriginal
+      );
+
+      if (date) {
+        return date;
+      }
+    }
+  } catch {
+    // Fallback ke tanggal hari ini kalau metadata tidak bisa dibaca.
+  }
+
+  return getTodayAsInputDate();
+};
+
 export function UploadForm() {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +125,7 @@ export function UploadForm() {
     setIsDragging(false);
   };
 
-  const addFiles = (fileList: FileList | null) => {
+  const addFiles = async (fileList: FileList | null) => {
     setError(null);
     setSuccess(null);
 
@@ -90,41 +133,53 @@ export function UploadForm() {
       return;
     }
 
-    const newItems: UploadItem[] = [];
+    const supportedTypes = ["image/jpeg", "image/png"];
+    const validFiles: File[] = [];
+    let hasInvalidType = false;
 
     Array.from(fileList).forEach((file) => {
-      if (!["image/jpeg", "image/png"].includes(file.type)) {
-        setError("Hanya mendukung gambar JPG atau PNG.");
+      if (!supportedTypes.includes(file.type)) {
+        hasInvalidType = true;
         return;
       }
 
-      const id = `${file.name}-${file.size}-${file.lastModified}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
-      const previewUrl = URL.createObjectURL(file);
-      const originalSize = file.size;
-      const estimatedPdfSize = estimatePdfSize(originalSize);
-
-      newItems.push({
-        id,
-        file,
-        previewUrl,
-        originalSize,
-        estimatedPdfSize,
-        date: getTodayAsInputDate(),
-        status: "idle",
-      });
+      validFiles.push(file);
     });
 
-    if (newItems.length === 0) {
+    if (hasInvalidType) {
+      setError("Hanya mendukung gambar JPG atau PNG.");
+    }
+
+    if (validFiles.length === 0) {
       return;
     }
+
+    const newItems: UploadItem[] = await Promise.all(
+      validFiles.map(async (file) => {
+        const id = `${file.name}-${file.size}-${file.lastModified}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        const previewUrl = URL.createObjectURL(file);
+        const originalSize = file.size;
+        const estimatedPdfSize = estimatePdfSize(originalSize);
+
+        return {
+          id,
+          file,
+          previewUrl,
+          originalSize,
+          estimatedPdfSize,
+          date: await getDefaultDateForFile(file),
+          status: "idle",
+        };
+      })
+    );
 
     setItems((prev) => [...prev, ...newItems]);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    addFiles(event.target.files);
+    void addFiles(event.target.files);
     // reset supaya memilih file yang sama lagi tetap terdeteksi
     event.target.value = "";
   };
@@ -134,7 +189,7 @@ export function UploadForm() {
     event.stopPropagation();
     setIsDragging(false);
 
-    addFiles(event.dataTransfer?.files ?? null);
+    void addFiles(event.dataTransfer?.files ?? null);
   };
 
   const handleItemDateChange = (id: string, value: string) => {
@@ -214,6 +269,12 @@ export function UploadForm() {
       date: string,
       reduceResolution: boolean
     ): Promise<boolean> => {
+      type ConversionErrorResponse = {
+        error?: string;
+        errorCode?: string;
+        sizeMb?: string | number;
+      };
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("date", date);
@@ -231,9 +292,9 @@ export function UploadForm() {
         return true;
       }
 
-      let data: any = null;
+      let data: ConversionErrorResponse | null = null;
       try {
-        data = await response.json();
+        data = (await response.json()) as ConversionErrorResponse;
       } catch {
         setError("Gagal mengonversi gambar.");
         return false;
